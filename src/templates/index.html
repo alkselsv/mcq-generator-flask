@@ -1,0 +1,420 @@
+<!DOCTYPE html>
+<html lang="ru">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Генератор вопросов</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        .alert-container {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            z-index: 1050;
+        }
+
+        .alert {
+            margin: 0;
+            border-radius: 0;
+            animation: slideDown 0.5s ease-in-out;
+        }
+
+        @keyframes slideDown {
+            from {
+                transform: translateY(-100%);
+            }
+
+            to {
+                transform: translateY(0);
+            }
+        }
+
+        .alert.fade-out {
+            animation: slideUp 0.5s ease-in-out forwards;
+        }
+
+        @keyframes slideUp {
+            from {
+                transform: translateY(0);
+            }
+
+            to {
+                transform: translateY(-100%);
+            }
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container mt-5 mb-5">
+        <h1 class="mb-4">Генератор вопросов</h1>
+
+        <ul class="nav nav-tabs" id="myTab" role="tablist">
+            <li class="nav-item" role="presentation">
+                <button class="nav-link active" id="input-tab" data-bs-toggle="tab" data-bs-target="#input"
+                    type="button" role="tab" aria-controls="input" aria-selected="true">Исходный текст</button>
+            </li>
+            <li class="nav-item" role="presentation">
+                <button class="nav-link" id="simplified-tab" data-bs-toggle="tab" data-bs-target="#simplified"
+                    type="button" role="tab" aria-controls="simplified" aria-selected="false">Упрощенный текст</button>
+            </li>
+        </ul>
+
+        <div class="tab-content" id="myTabContent">
+            <div class="tab-pane fade show active" id="input" role="tabpanel" aria-labelledby="input-tab">
+                <form id="questionForm" class="mt-3">
+                    <div class="mb-3">
+                        <textarea class="form-control" id="text" name="text" rows="15" required></textarea>
+                        <div class="form-text">Длина текста: <span id="textLength">0</span> / 16000 символов (минимум:
+                            100)</div>
+                    </div>
+                    <div class="mb-3">
+                        <button type="button" class="btn btn-secondary" id="simplifyBtn">
+                            <span class="spinner-border spinner-border-sm d-none" role="status"
+                                aria-hidden="true"></span>
+                            <span class="btn-text">Упростить текст</span>
+                        </button>
+                    </div>
+                    <div class="mb-3 d-flex align-items-center gap-2">
+                        <label for="numQuestions" class="form-label mb-0">Количество вопросов:</label>
+                        <input type="number" class="form-control" id="numQuestions" name="numQuestions" min="1" max="20"
+                            value="5" style="width: 80px;">
+                        <button type="submit" class="btn btn-primary" id="generateBtn">
+                            <span class="spinner-border spinner-border-sm d-none" role="status"
+                                aria-hidden="true"></span>
+                            <span class="btn-text">Сгенерировать вопросы</span>
+                        </button>
+                    </div>
+                </form>
+            </div>
+            <div class="tab-pane fade" id="simplified" role="tabpanel" aria-labelledby="simplified-tab">
+                <div id="simplifiedText" class="mt-3"></div>
+                <div class="mt-3 d-flex align-items-center gap-2">
+                    <label for="numQuestionsSimplified" class="form-label mb-0">Количество вопросов:</label>
+                    <input type="number" class="form-control" id="numQuestionsSimplified" name="numQuestionsSimplified"
+                        min="1" max="20" value="5" style="width: 80px;">
+                    <button type="button" class="btn btn-primary" id="generateSimplifiedBtn">
+                        <span class="spinner-border spinner-border-sm d-none" role="status" aria-hidden="true"></span>
+                        <span class="btn-text">Сгенерировать вопросы</span>
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <div id="questions" class="mt-4"></div>
+        <div class="btn-group gap-2 mt-3" style="display: none;" id="downloadBtns">
+            <button id="downloadCsvBtn" class="btn btn-success">Скачать CSV</button>
+            <button id="downloadXlsxBtn" class="btn btn-success">Скачать XLSX</button>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        document.getElementById('text').addEventListener('input', function () {
+            const length = this.value.length;
+            document.getElementById('textLength').textContent = length;
+        });
+
+        // Синхронизация количества вопросов между вкладками
+        document.getElementById('numQuestions').addEventListener('input', function () {
+            document.getElementById('numQuestionsSimplified').value = this.value;
+        });
+        
+        document.getElementById('numQuestions').addEventListener('change', function () {
+            document.getElementById('numQuestionsSimplified').value = this.value;
+        });
+
+        document.getElementById('generateBtn').addEventListener('click', function (e) {
+            e.preventDefault();
+            const textArea = document.getElementById('text');
+            const text = textArea.value.trim();
+            const length = text.length;
+
+            if (!text) {
+                textArea.classList.add('is-invalid');
+                showFlashMessage('Пожалуйста, введите текст для генерации вопросов', 'warning');
+                return;
+            }
+
+            if (length < 100) {
+                textArea.classList.add('is-invalid');
+                showFlashMessage('Текст слишком короткий. Минимальная длина: 100 символов', 'warning');
+                return;
+            }
+
+            if (length > 16000) {
+                textArea.classList.add('is-invalid');
+                showFlashMessage('Текст слишком длинный. Максимальная длина: 16000 символов', 'warning');
+                return;
+            }
+
+            textArea.classList.remove('is-invalid');
+
+            const generateBtn = document.getElementById('generateBtn');
+            const spinner = generateBtn.querySelector('.spinner-border');
+            const btnText = generateBtn.querySelector('.btn-text');
+
+            spinner.classList.remove('d-none');
+            btnText.textContent = 'Генерация...';
+            generateBtn.disabled = true;
+
+            fetch('/', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/x-www-form-urlencoded',
+                },
+                body: new URLSearchParams({
+                    'text': text,
+                    'num_questions': document.getElementById('numQuestions').value
+                })
+            })
+                .then(response => response.json())
+                .then(data => {
+                    updateQuestionsDisplay(data);
+                })
+                .catch(error => {
+                    console.error('Error:', error);
+                    showFlashMessage('Произошла ошибка при обработке запроса', 'danger');
+                })
+                .finally(() => {
+                    spinner.classList.add('d-none');
+                    btnText.textContent = 'Сгенерировать вопросы';
+                    generateBtn.disabled = false;
+                });
+        });
+
+        document.getElementById('downloadCsvBtn').addEventListener('click', function () {
+            const selectedQuestions = getSelectedQuestions();
+            if (selectedQuestions.length === 0) {
+                showFlashMessage('Пожалуйста, выберите хотя бы один вопрос для скачивания', 'warning');
+                return;
+            }
+            window.location.href = `/download?format=csv&questions=${selectedQuestions.join(',')}`;
+        });
+
+        document.getElementById('downloadXlsxBtn').addEventListener('click', function () {
+            const selectedQuestions = getSelectedQuestions();
+            if (selectedQuestions.length === 0) {
+                showFlashMessage('Пожалуйста, выберите хотя бы один вопрос для скачивания', 'warning');
+                return;
+            }
+            window.location.href = `/download?format=xlsx&questions=${selectedQuestions.join(',')}`;
+        });
+
+        document.getElementById('simplifyBtn').addEventListener('click', function () {
+            const textArea = document.getElementById('text');
+            const text = textArea.value.trim();
+            const length = text.length;
+
+            if (!text) {
+                textArea.classList.add('is-invalid');
+                showFlashMessage('Пожалуйста, введите текст для упрощения', 'warning');
+                return;
+            }
+
+            if (length < 100) {
+                textArea.classList.add('is-invalid');
+                showFlashMessage('Текст слишком короткий. Минимальная длина: 100 символов', 'warning');
+                return;
+            }
+
+            if (length > 16000) {
+                textArea.classList.add('is-invalid');
+                showFlashMessage('Текст слишком длинный. Максимальная длина: 16000 символов', 'warning');
+                return;
+            }
+
+            textArea.classList.remove('is-invalid');
+
+            const simplifiedText = document.getElementById('simplifiedText');
+            const simplifyBtn = document.getElementById('simplifyBtn');
+            const spinner = simplifyBtn.querySelector('.spinner-border');
+            const btnText = simplifyBtn.querySelector('.btn-text');
+
+            spinner.classList.remove('d-none');
+            btnText.textContent = 'Упрощение...';
+            simplifyBtn.disabled = true;
+
+            fetch('/simplify', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/x-www-form-urlencoded',
+                },
+                body: new URLSearchParams({
+                    'text': text
+                })
+            })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.error) {
+                        showFlashMessage(data.error, 'danger');
+                    } else {
+                        simplifiedText.innerHTML = `<p>${data.simplified_text}</p>`;
+                        document.getElementById('simplified-tab').click();
+                        document.getElementById('generateSimplifiedBtn').disabled = false;
+                    }
+                })
+                .catch(error => {
+                    console.error('Error:', error);
+                    showFlashMessage('Произошла ошибка при упрощении текста', 'danger');
+                })
+                .finally(() => {
+                    spinner.classList.add('d-none');
+                    btnText.textContent = 'Упростить текст';
+                    simplifyBtn.disabled = false;
+                });
+        });
+
+        document.getElementById('generateSimplifiedBtn').addEventListener('click', function () {
+            const simplifiedText = document.getElementById('simplifiedText').innerText;
+            if (!simplifiedText.trim()) {
+                showFlashMessage('Пожалуйста, сначала упростите текст', 'warning');
+                return;
+            }
+
+            const generateBtn = document.getElementById('generateSimplifiedBtn');
+            const spinner = generateBtn.querySelector('.spinner-border');
+            const btnText = generateBtn.querySelector('.btn-text');
+
+            spinner.classList.remove('d-none');
+            btnText.textContent = 'Генерация...';
+            generateBtn.disabled = true;
+
+            fetch('/', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/x-www-form-urlencoded',
+                },
+                body: new URLSearchParams({
+                    'text': simplifiedText,
+                    'num_questions': document.getElementById('numQuestionsSimplified').value
+                })
+            })
+                .then(response => response.json())
+                .then(data => {
+                    updateQuestionsDisplay(data);
+                })
+                .catch(error => {
+                    console.error('Error:', error);
+                    showFlashMessage('Произошла ошибка при обработке запроса', 'danger');
+                })
+                .finally(() => {
+                    spinner.classList.add('d-none');
+                    btnText.textContent = 'Сгенерировать вопросы';
+                    generateBtn.disabled = false;
+                });
+        });
+
+        function showFlashMessage(message, type) {
+            const alertContainer = document.querySelector('.alert-container') || (() => {
+                const container = document.createElement('div');
+                container.className = 'alert-container';
+                document.body.prepend(container);
+                return container;
+            })();
+
+            const flashDiv = document.createElement('div');
+            flashDiv.className = `alert alert-${type} alert-dismissible`;
+            flashDiv.role = 'alert';
+            flashDiv.innerHTML = `
+                ${message}
+                <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+            `;
+
+            alertContainer.appendChild(flashDiv);
+
+            if (type !== 'danger') {
+                setTimeout(() => {
+                    flashDiv.classList.add('fade-out');
+                    setTimeout(() => {
+                        flashDiv.remove();
+                        if (alertContainer.children.length === 0) {
+                            alertContainer.remove();
+                        }
+                    }, 500);
+                }, 2000);
+            }
+        }
+
+        document.querySelectorAll('button[data-bs-toggle="tab"]').forEach(tab => {
+            tab.addEventListener('shown.bs.tab', function (event) {
+                if (event.target.id === 'simplified-tab') {
+                    const simplifiedText = document.getElementById('simplifiedText').innerText;
+                    document.getElementById('generateSimplifiedBtn').disabled = !simplifiedText.trim();
+                }
+            });
+        });
+
+        function updateQuestionsDisplay(data) {
+            const questionsDiv = document.getElementById('questions');
+            questionsDiv.innerHTML = '';
+
+            if (data.error) {
+                showFlashMessage(data.error, 'danger');
+                document.getElementById('downloadBtns').style.display = 'none';
+            } else {
+                const selectAllHtml = `
+                    <div class="mb-3">
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" id="selectAll">
+                            <label class="form-check-label" for="selectAll">
+                                Выбрать все
+                            </label>
+                        </div>
+                    </div>
+                `;
+                questionsDiv.innerHTML = selectAllHtml;
+
+                data.questions.forEach((item, index) => {
+                    const questionHtml = `
+                        <div class="card mb-3">
+                            <div class="card-body">
+                                <div class="d-flex align-items-start gap-2">
+                                    <div class="form-check">
+                                        <input class="form-check-input question-checkbox" type="checkbox" 
+                                            value="${index}" id="question${index}" checked>
+                                    </div>
+                                    <div class="flex-grow-1">
+                                        <h5 class="card-title">${item.question}</h5>
+                                        <ul class="list-group mb-3">
+                                            ${item.options.map(option => `<li class="list-group-item">${option}</li>`).join('')}
+                                        </ul>
+                                        <p class="card-text"><strong>Правильный ответ:</strong> ${item.answer}</p>
+                                        <p class="card-text"><strong>Тема:</strong> ${item.topic_number} ${item.topic}</p>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    `;
+                    questionsDiv.innerHTML += questionHtml;
+                });
+
+                document.getElementById('downloadBtns').style.display = 'inline-flex';
+
+                document.getElementById('selectAll').addEventListener('change', function () {
+                    const checkboxes = document.querySelectorAll('.question-checkbox');
+                    checkboxes.forEach(checkbox => {
+                        checkbox.checked = this.checked;
+                    });
+                });
+
+                document.querySelectorAll('.question-checkbox').forEach(checkbox => {
+                    checkbox.addEventListener('change', function () {
+                        const allCheckboxes = document.querySelectorAll('.question-checkbox');
+                        const selectAllCheckbox = document.getElementById('selectAll');
+                        selectAllCheckbox.checked = Array.from(allCheckboxes).every(cb => cb.checked);
+                    });
+                });
+            }
+        }
+
+        function getSelectedQuestions() {
+            const checkboxes = document.querySelectorAll('.question-checkbox:checked');
+            return Array.from(checkboxes).map(cb => cb.value);
+        }
+    </script>
+</body>
+
+</html>
