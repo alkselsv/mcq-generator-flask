@@ -31,8 +31,8 @@
 Для запуска приложения в производственном режиме с использованием Gunicorn выполните следующую команду:
 
 ```
-poetry run gunicorn -w 4 -b 0.0.0.0:5000 --pythonpath src app:app
- ```
+poetry run gunicorn -c gunicorn.conf.py app:app
+```
 
 После запуска приложение будет доступно по адресу `http://localhost:5000`.
 

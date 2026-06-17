@@ -1,10 +1,7 @@
 import os
 from dotenv import load_dotenv
 from langchain_openai import ChatOpenAI
-from langchain.docstore.document import Document
-from langchain.prompts import PromptTemplate
-from langchain.chains.llm import LLMChain
-from langchain.chains.combine_documents.stuff import StuffDocumentsChain
+from langchain_core.prompts import PromptTemplate
 
 
 def simplify_text(text):
@@ -20,16 +17,13 @@ def simplify_text(text):
             request_timeout=300,  # 5 минут таймаут запроса
         )
 
-        doc = [Document(page_content=text)]
         prompt_template = """Перепиши текст, упростив его, при этом не используй нумерацию абзацев:
         "{text}".
         """
         prompt = PromptTemplate.from_template(prompt_template)
-        llm_chain = LLMChain(llm=chat_model, prompt=prompt)
-        stuff_chain = StuffDocumentsChain(
-            llm_chain=llm_chain, document_variable_name="text"
-        )
-        summary = stuff_chain.run(doc)
+        chain = prompt | chat_model
+        response = chain.invoke({"text": text})
+        summary = response.content
 
         if not summary:
             raise ValueError("Модель не вернула упрощенного текста")

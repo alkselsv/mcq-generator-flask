@@ -94,7 +94,7 @@ def generate_questions(text, num_questions=5):
     user_query = prompt.format_prompt(user_prompt=text)
 
     try:
-        user_query_output = chat_model(user_query.to_messages())
+        user_query_output = chat_model.invoke(user_query.to_messages())
         if not user_query_output or not user_query_output.content:
             raise ValueError("Модель не вернула ответа")
 

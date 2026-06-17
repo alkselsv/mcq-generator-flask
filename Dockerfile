@@ -9,10 +9,11 @@ RUN pip install --no-cache-dir poetry && \
     poetry install --no-root --no-interaction --no-ansi
 
 COPY src/ ./src/
+COPY gunicorn.conf.py ./
 COPY .env ./.env
 
 ENV PYTHONUNBUFFERED=1
 
 EXPOSE 5000
 
-CMD ["gunicorn", "-w", "4", "-b", "0.0.0.0:5000", "--timeout", "600", "--pythonpath", "src", "app:app"]
+CMD ["gunicorn", "-c", "gunicorn.conf.py", "app:app"]

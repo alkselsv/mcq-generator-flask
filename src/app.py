@@ -14,6 +14,7 @@ from services.text_simplification import simplify_text
 load_dotenv()
 app = Flask(__name__)
 app.secret_key = os.environ.get("APP_SECRET_KEY")
+app.config["MAX_CONTENT_LENGTH"] = 256 * 1024
 
 # Директория для временных файлов с вопросами
 QUESTIONS_STORAGE_DIR = Path(tempfile.gettempdir()) / "mcq_questions"
