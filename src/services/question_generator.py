@@ -1,10 +1,12 @@
-import os
 import re
 import json
-from dotenv import load_dotenv
-from langchain_openai import ChatOpenAI
+from functools import lru_cache
+
 from langchain.output_parsers import StructuredOutputParser, ResponseSchema
 from langchain.prompts import ChatPromptTemplate, HumanMessagePromptTemplate
+
+from services.llm import get_chat_model
+from services.text_chunking import chunk_text
 
 
 def parse_result(result):
@@ -35,18 +37,8 @@ def parse_result(result):
     return questions
 
 
-def generate_questions(text, num_questions=5):
-    load_dotenv()
-
-    chat_model = ChatOpenAI(
-        temperature=0,
-        model_name="gpt-4o",
-        api_key=os.environ.get("OPENAI_API_KEY"),
-        timeout=300,  # 5 минут таймаут
-        max_retries=3,  # 3 попытки при ошибке
-        request_timeout=300,  # 5 минут таймаут запроса
-    )
-
+@lru_cache(maxsize=32)
+def _get_prompt(num_questions):
     response_schemas = [
         ResponseSchema(
             name="question",
@@ -78,7 +70,7 @@ def generate_questions(text, num_questions=5):
     ]
     output_parser = StructuredOutputParser.from_response_schemas(response_schemas)
     format_instructions = output_parser.get_format_instructions()
-    prompt = ChatPromptTemplate(
+    return ChatPromptTemplate(
         messages=[
             HumanMessagePromptTemplate.from_template(
                 """Получив текст нормативного документа, сгенерируй из него {number_of_questions} вопросов с несколькими вариантами ответов с правильным ответом.
@@ -91,23 +83,42 @@ def generate_questions(text, num_questions=5):
             "format_instructions": format_instructions,
         },
     )
+
+
+def _generate_questions_for_chunk(text, num_questions):
+    chat_model = get_chat_model()
+    prompt = _get_prompt(num_questions)
     user_query = prompt.format_prompt(user_prompt=text)
+    user_query_output = chat_model.invoke(user_query.to_messages())
 
+    if not user_query_output or not user_query_output.content:
+        raise ValueError("Модель не вернула ответа")
+
+    questions = parse_result(user_query_output.content)
+    if not questions:
+        raise ValueError("Не удалось получить вопросы из ответа модели")
+
+    return questions
+
+
+def generate_questions(text, num_questions=5):
     try:
-        user_query_output = chat_model.invoke(user_query.to_messages())
-        if not user_query_output or not user_query_output.content:
-            raise ValueError("Модель не вернула ответа")
+        chunks = chunk_text(text)
+        if len(chunks) == 1:
+            return _generate_questions_for_chunk(chunks[0], num_questions), None
 
-        result = user_query_output.content
-        questions = parse_result(result)
+        questions = []
+        remaining = num_questions
+        for index, chunk in enumerate(chunks):
+            chunks_left = len(chunks) - index
+            chunk_questions_count = max(1, remaining // chunks_left)
+            chunk_questions = _generate_questions_for_chunk(chunk, chunk_questions_count)
+            questions.extend(chunk_questions)
+            remaining = num_questions - len(questions)
+            if remaining <= 0:
+                break
 
-        if not questions:
-            raise ValueError("Не удалось получить вопросы из ответа модели")
-
-        return questions, None
+        return questions[:num_questions], None
     except Exception as e:
         error_message = f"Ошибка при генерации вопросов: {str(e)}"
-        return (
-            [],
-            error_message,
-        )
+        return [], error_message

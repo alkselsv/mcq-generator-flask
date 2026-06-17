@@ -4,9 +4,9 @@ WORKDIR /app
 
 COPY pyproject.toml poetry.lock* ./
 
-RUN pip install --no-cache-dir poetry && \
+RUN pip install --no-cache-dir "poetry==2.4.1" && \
     poetry config virtualenvs.create false && \
-    poetry install --no-root --no-interaction --no-ansi
+    poetry install --only main --no-root --no-interaction --no-ansi
 
 COPY src/ ./src/
 COPY gunicorn.conf.py ./

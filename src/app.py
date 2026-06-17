@@ -50,7 +50,7 @@ def index():
             question_id = str(uuid.uuid4())
             question_file = QUESTIONS_STORAGE_DIR / f"{question_id}.json"
             with open(question_file, "w", encoding="utf-8") as f:
-                json.dump(questions, f, ensure_ascii=False, indent=2)
+                json.dump(questions, f, ensure_ascii=False)
             # Храним только ID файла в сессии
             session["question_id"] = question_id
         
