@@ -55,7 +55,7 @@ docker build -t mcq-generator-flask .
 Запуск контейнера:
 
 ```
-docker run -d -p 8080:5000 --name mcq-generator-flask mcq-generator-flask
+docker run -d -p 5000:5000 --name mcq-generator-flask mcq-generator-flask
 ```
 
 После запуска приложение будет доступно по адресу `http://localhost:8080`.
