@@ -7,11 +7,13 @@ from pathlib import Path
 from dotenv import load_dotenv
 from flask import Flask, render_template, request, jsonify, send_file, session
 
+from logging_config import setup_logging
 from services.question_generator import generate_questions
 from services.file_generator import generate_csv, generate_xlsx
 from services.text_simplification import simplify_text
 
 load_dotenv()
+setup_logging()
 app = Flask(__name__)
 app.secret_key = os.environ.get("APP_SECRET_KEY")
 app.config["MAX_CONTENT_LENGTH"] = 256 * 1024

@@ -1,12 +1,15 @@
 import re
 import json
+import logging
 from functools import lru_cache
 
 from langchain.output_parsers import StructuredOutputParser, ResponseSchema
 from langchain.prompts import ChatPromptTemplate, HumanMessagePromptTemplate
 
-from services.llm import get_chat_model
+from services.llm import invoke_chat
 from services.text_chunking import chunk_text
+
+logger = logging.getLogger("llm.questions")
 
 
 def parse_result(result):
@@ -30,9 +33,9 @@ def parse_result(result):
                 }
             )
         except json.JSONDecodeError:
-            print(f"Ошибка при разборе JSON: {json_str}")
-        except KeyError as e:
-            print(f"Отсутствует ключ в JSON объекте: {e}")
+            logger.warning("Ошибка при разборе JSON: %s", json_str)
+        except KeyError as error:
+            logger.warning("Отсутствует ключ в JSON объекте: %s", error)
 
     return questions
 
@@ -85,11 +88,16 @@ def _get_prompt(num_questions):
     )
 
 
-def _generate_questions_for_chunk(text, num_questions):
-    chat_model = get_chat_model()
+def _generate_questions_for_chunk(text, num_questions, chunk_index=1, chunks_total=1):
     prompt = _get_prompt(num_questions)
     user_query = prompt.format_prompt(user_prompt=text)
-    user_query_output = chat_model.invoke(user_query.to_messages())
+    user_query_output = invoke_chat(
+        user_query.to_messages(),
+        operation="generate_questions",
+        chunk=f"{chunk_index}/{chunks_total}",
+        text_length=len(text),
+        num_questions=num_questions,
+    )
 
     if not user_query_output or not user_query_output.content:
         raise ValueError("Модель не вернула ответа")
@@ -98,12 +106,25 @@ def _generate_questions_for_chunk(text, num_questions):
     if not questions:
         raise ValueError("Не удалось получить вопросы из ответа модели")
 
+    logger.info(
+        "Сгенерировано вопросов: %s (chunk %s/%s)",
+        len(questions),
+        chunk_index,
+        chunks_total,
+    )
     return questions
 
 
 def generate_questions(text, num_questions=5):
     try:
         chunks = chunk_text(text)
+        logger.info(
+            "Запрос генерации вопросов: text_length=%s, chunks=%s, num_questions=%s",
+            len(text),
+            len(chunks),
+            num_questions,
+        )
+
         if len(chunks) == 1:
             return _generate_questions_for_chunk(chunks[0], num_questions), None
 
@@ -112,13 +133,19 @@ def generate_questions(text, num_questions=5):
         for index, chunk in enumerate(chunks):
             chunks_left = len(chunks) - index
             chunk_questions_count = max(1, remaining // chunks_left)
-            chunk_questions = _generate_questions_for_chunk(chunk, chunk_questions_count)
+            chunk_questions = _generate_questions_for_chunk(
+                chunk,
+                chunk_questions_count,
+                chunk_index=index + 1,
+                chunks_total=len(chunks),
+            )
             questions.extend(chunk_questions)
             remaining = num_questions - len(questions)
             if remaining <= 0:
                 break
 
         return questions[:num_questions], None
-    except Exception as e:
-        error_message = f"Ошибка при генерации вопросов: {str(e)}"
+    except Exception as error:
+        error_message = f"Ошибка при генерации вопросов: {str(error)}"
+        logger.error(error_message)
         return [], error_message
