@@ -89,8 +89,9 @@ docker run -d -p 5000:5000 -e LOG_LEVEL=DEBUG --name mcq-generator-flask mcq-gen
 
 | Переменная | По умолчанию | Описание |
 |---|---|---|
-| `LOG_LEVEL` | `INFO` | Уровень логирования (`DEBUG`, `INFO`, `WARNING`) |
-| `LOG_LLM_PREVIEW_LENGTH` | `300` | Длина превью промпта/ответа в логах. `0` — только размер, `-1` — полный текст |
+| `LOG_LEVEL` | `INFO` | Уровень логирования (`DEBUG`, `INFO`, `WARNING`). В режиме `DEBUG` промпты и ответы LLM пишутся на уровне `INFO` |
+| `LOG_LLM_PREVIEW_LENGTH` | `300` | Длина превью промпта/ответа. `0` — только размер, `-1` — полный текст |
+| `LOG_HTTP_DEBUG` | `false` | Логировать HTTP-запросы OpenAI (`httpcore`, `httpx`). По умолчанию выключено, чтобы не засорять вывод |
 
 Пример логов при `LOG_LEVEL=INFO`:
 
@@ -101,7 +102,7 @@ docker run -d -p 5000:5000 -e LOG_LEVEL=DEBUG --name mcq-generator-flask mcq-gen
 2026-06-17 10:00:12 [INFO] llm.questions: Сгенерировано вопросов: 3 (chunk 1/2)
 ```
 
-При `LOG_LEVEL=DEBUG` дополнительно выводятся полные промпты и ответы модели.
+При `LOG_LEVEL=DEBUG` дополнительно выводятся промпты и ответы модели (на уровне `INFO`, с префиксами `LLM prompt:` и `LLM response:`).
 
 > **Важно для Docker:** переменная `LOG_LEVEL` из `.env` внутри образа по умолчанию равна `INFO`.
 > Для отладки передайте `-e LOG_LEVEL=DEBUG` при запуске контейнера или измените `.env` перед сборкой образа.
@@ -122,8 +123,8 @@ docker logs -f mcq-generator-flask
 # последние 100 строк
 docker logs --tail 100 mcq-generator-flask
 
-# только запросы к модели
-docker logs mcq-generator-flask 2>&1 | grep llm
+# только запросы к модели (промпты и ответы в DEBUG-режиме)
+docker logs mcq-generator-flask 2>&1 | grep 'LLM '
 ```
 
 Перезапуск с подробным логированием:

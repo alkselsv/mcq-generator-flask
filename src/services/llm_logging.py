@@ -3,6 +3,8 @@ import os
 import time
 from contextlib import contextmanager
 
+from logging_config import is_debug_mode
+
 logger = logging.getLogger("llm")
 
 PREVIEW_LENGTH = int(os.environ.get("LOG_LLM_PREVIEW_LENGTH", "300"))
@@ -12,8 +14,10 @@ def preview_text(text):
     if text is None:
         return ""
 
-    if logger.isEnabledFor(logging.DEBUG) or PREVIEW_LENGTH < 0:
-        return text
+    if is_debug_mode() or PREVIEW_LENGTH < 0:
+        if PREVIEW_LENGTH < 0 or len(text) <= PREVIEW_LENGTH:
+            return text
+        return f"{text[:PREVIEW_LENGTH]}... [{len(text)} chars total]"
 
     if PREVIEW_LENGTH == 0:
         return f"[{len(text)} chars]"
@@ -26,6 +30,13 @@ def preview_text(text):
 
 def _format_context(context):
     return ", ".join(f"{key}={value}" for key, value in context.items())
+
+
+def _log_detail(message, *args):
+    if is_debug_mode():
+        logger.info(message, *args)
+    else:
+        logger.debug(message, *args)
 
 
 @contextmanager
@@ -48,10 +59,10 @@ def log_llm_call(operation, **context):
 
 
 def log_llm_prompt(prompt_text):
-    logger.debug("LLM prompt: %s", preview_text(prompt_text))
+    _log_detail("LLM prompt: %s", preview_text(prompt_text))
 
 
 def log_llm_response(response_text, **extra):
     extra_str = _format_context(extra)
     suffix = f" ({extra_str})" if extra_str else ""
-    logger.debug("LLM response%s: %s", suffix, preview_text(response_text))
+    _log_detail("LLM response%s: %s", suffix, preview_text(response_text))

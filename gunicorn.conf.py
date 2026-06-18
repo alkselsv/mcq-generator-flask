@@ -10,7 +10,7 @@ max_requests_jitter = 10
 loglevel = os.environ.get("LOG_LEVEL", "info").lower()
 
 
-def post_fork(server, worker):
+def post_worker_init(worker):
     from logging_config import setup_logging
 
     setup_logging()
