@@ -11,6 +11,7 @@ from logging_config import setup_logging
 from services.question_generator import generate_questions
 from services.file_generator import generate_csv, generate_xlsx
 from services.text_simplification import simplify_text
+from text_limits import MIN_TEXT_LENGTH, MAX_TEXT_LENGTH, validate_text_length
 
 load_dotenv()
 setup_logging()
@@ -24,6 +25,14 @@ QUESTIONS_STORAGE_DIR.mkdir(exist_ok=True)
 
 # Максимальный возраст файла в секундах (24 часа)
 MAX_FILE_AGE = 24 * 60 * 60
+
+
+@app.context_processor
+def inject_text_limits():
+    return {
+        "min_text_length": MIN_TEXT_LENGTH,
+        "max_text_length": MAX_TEXT_LENGTH,
+    }
 
 
 def cleanup_old_files():
@@ -43,7 +52,11 @@ def index():
         # Очищаем старые файлы при каждом запросе генерации
         cleanup_old_files()
         
-        text = request.form["text"]
+        text = request.form["text"].strip()
+        validation_error = validate_text_length(text)
+        if validation_error:
+            return jsonify({"questions": None, "error": validation_error}), 400
+
         num_questions = int(request.form.get("num_questions", 5))
         questions, error = generate_questions(text, num_questions)
         
@@ -117,7 +130,11 @@ def download_file():
 
 @app.route("/simplify", methods=["POST"])
 def simplify():
-    text = request.form["text"]
+    text = request.form["text"].strip()
+    validation_error = validate_text_length(text)
+    if validation_error:
+        return jsonify({"error": validation_error}), 400
+
     simplified_text, error = simplify_text(text)
     if error:
         return jsonify({"error": error}), 400
