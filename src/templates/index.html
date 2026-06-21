@@ -112,6 +112,7 @@
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/js/bootstrap.bundle.min.js"></script>
     <script>
+        let currentQuestionId = null;
         const MIN_TEXT_LENGTH = {{ min_text_length }};
         const MAX_TEXT_LENGTH = {{ max_text_length }};
 
@@ -166,38 +167,7 @@
             }
 
             textArea.classList.remove('is-invalid');
-
-            const generateBtn = document.getElementById('generateBtn');
-            const spinner = generateBtn.querySelector('.spinner-border');
-            const btnText = generateBtn.querySelector('.btn-text');
-
-            spinner.classList.remove('d-none');
-            btnText.textContent = 'Генерация...';
-            generateBtn.disabled = true;
-
-            fetch('/', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/x-www-form-urlencoded',
-                },
-                body: new URLSearchParams({
-                    'text': text,
-                    'num_questions': document.getElementById('numQuestions').value
-                })
-            })
-                .then(response => response.json())
-                .then(data => {
-                    updateQuestionsDisplay(data);
-                })
-                .catch(error => {
-                    console.error('Error:', error);
-                    showFlashMessage('Произошла ошибка при обработке запроса', 'danger');
-                })
-                .finally(() => {
-                    spinner.classList.add('d-none');
-                    btnText.textContent = 'Сгенерировать вопросы';
-                    generateBtn.disabled = false;
-                });
+            startGeneration(text, document.getElementById('numQuestions').value, document.getElementById('generateBtn'));
         });
 
         document.getElementById('downloadCsvBtn').addEventListener('click', function () {
@@ -206,7 +176,8 @@
                 showFlashMessage('Пожалуйста, выберите хотя бы один вопрос для скачивания', 'warning');
                 return;
             }
-            window.location.href = `/download?format=csv&questions=${selectedQuestions.join(',')}`;
+            const questionParam = currentQuestionId ? `&question_id=${currentQuestionId}` : '';
+            window.location.href = `/download?format=csv&questions=${selectedQuestions.join(',')}${questionParam}`;
         });
 
         document.getElementById('downloadXlsxBtn').addEventListener('click', function () {
@@ -215,7 +186,8 @@
                 showFlashMessage('Пожалуйста, выберите хотя бы один вопрос для скачивания', 'warning');
                 return;
             }
-            window.location.href = `/download?format=xlsx&questions=${selectedQuestions.join(',')}`;
+            const questionParam = currentQuestionId ? `&question_id=${currentQuestionId}` : '';
+            window.location.href = `/download?format=xlsx&questions=${selectedQuestions.join(',')}${questionParam}`;
         });
 
         document.getElementById('simplifyBtn').addEventListener('click', function () {
@@ -234,48 +206,20 @@
 
             textArea.classList.remove('is-invalid');
 
-            const simplifiedText = document.getElementById('simplifiedText');
             const simplifyBtn = document.getElementById('simplifyBtn');
-            const spinner = simplifyBtn.querySelector('.spinner-border');
-            const btnText = simplifyBtn.querySelector('.btn-text');
-
-            spinner.classList.remove('d-none');
-            btnText.textContent = 'Упрощение...';
-            simplifyBtn.disabled = true;
-
-            fetch('/simplify', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/x-www-form-urlencoded',
-                },
-                body: new URLSearchParams({
-                    'text': text
-                })
-            })
-                .then(response => response.json())
-                .then(data => {
-                    if (data.error) {
-                        showFlashMessage(data.error, 'danger');
-                    } else {
-                        simplifiedText.innerHTML = `<p>${data.simplified_text}</p>`;
-                        document.getElementById('simplified-tab').click();
-                        document.getElementById('generateSimplifiedBtn').disabled = false;
-                    }
-                })
-                .catch(error => {
-                    console.error('Error:', error);
-                    showFlashMessage('Произошла ошибка при упрощении текста', 'danger');
-                })
-                .finally(() => {
-                    spinner.classList.add('d-none');
-                    btnText.textContent = 'Упростить текст';
-                    simplifyBtn.disabled = false;
-                });
+            startJob('/simplify', { text }, simplifyBtn, 'Упрощение...', 'Упростить текст', (data) => {
+                if (data.error) {
+                    showFlashMessage(data.error, 'danger');
+                    return;
+                }
+                document.getElementById('simplifiedText').innerHTML = `<p>${data.simplified_text}</p>`;
+                document.getElementById('simplified-tab').click();
+                document.getElementById('generateSimplifiedBtn').disabled = false;
+            });
         });
 
         document.getElementById('generateSimplifiedBtn').addEventListener('click', function () {
-            const simplifiedTextEl = document.getElementById('simplifiedText');
-            const text = simplifiedTextEl.innerText.trim();
+            const text = document.getElementById('simplifiedText').innerText.trim();
             const validationError = validateTextLength(
                 text,
                 'Пожалуйста, сначала упростите текст'
@@ -287,37 +231,82 @@
             }
 
             const generateBtn = document.getElementById('generateSimplifiedBtn');
-            const spinner = generateBtn.querySelector('.spinner-border');
-            const btnText = generateBtn.querySelector('.btn-text');
+            startGeneration(text, document.getElementById('numQuestionsSimplified').value, generateBtn);
+        });
 
-            spinner.classList.remove('d-none');
-            btnText.textContent = 'Генерация...';
-            generateBtn.disabled = true;
+        function setButtonLoading(button, loading, loadingText, defaultText) {
+            const spinner = button.querySelector('.spinner-border');
+            const btnText = button.querySelector('.btn-text');
+            spinner.classList.toggle('d-none', !loading);
+            btnText.textContent = loading ? loadingText : defaultText;
+            button.disabled = loading;
+        }
 
-            fetch('/', {
+        function startGeneration(text, numQuestions, button) {
+            startJob(
+                '/generate',
+                { text, num_questions: numQuestions },
+                button,
+                'Генерация...',
+                'Сгенерировать вопросы',
+                (data) => {
+                    if (data.status === 'done') {
+                        currentQuestionId = data.question_id;
+                        updateQuestionsDisplay(data);
+                    } else if (data.error) {
+                        updateQuestionsDisplay({ error: data.error });
+                    }
+                }
+            );
+        }
+
+        function startJob(url, params, button, loadingText, defaultText, onComplete) {
+            setButtonLoading(button, true, loadingText, defaultText);
+
+            fetch(url, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/x-www-form-urlencoded',
                 },
-                body: new URLSearchParams({
-                    'text': text,
-                    'num_questions': document.getElementById('numQuestionsSimplified').value
-                })
+                body: new URLSearchParams(params)
             })
-                .then(response => response.json())
-                .then(data => {
-                    updateQuestionsDisplay(data);
+                .then(response => {
+                    if (!response.ok) {
+                        throw new Error('Не удалось запустить задачу');
+                    }
+                    return response.json();
                 })
+                .then(data => pollJob(data.job_id, button, loadingText, defaultText, onComplete))
                 .catch(error => {
                     console.error('Error:', error);
                     showFlashMessage('Произошла ошибка при обработке запроса', 'danger');
-                })
-                .finally(() => {
-                    spinner.classList.add('d-none');
-                    btnText.textContent = 'Сгенерировать вопросы';
-                    generateBtn.disabled = false;
+                    setButtonLoading(button, false, loadingText, defaultText);
                 });
-        });
+        }
+
+        function pollJob(jobId, button, loadingText, defaultText, onComplete) {
+            fetch(`/jobs/${jobId}`)
+                .then(response => {
+                    if (!response.ok) {
+                        throw new Error('Задача не найдена');
+                    }
+                    return response.json();
+                })
+                .then(data => {
+                    if (data.status === 'pending' || data.status === 'running') {
+                        setTimeout(() => pollJob(jobId, button, loadingText, defaultText, onComplete), 2000);
+                        return;
+                    }
+
+                    onComplete(data);
+                    setButtonLoading(button, false, loadingText, defaultText);
+                })
+                .catch(error => {
+                    console.error('Error:', error);
+                    showFlashMessage('Произошла ошибка при получении результата', 'danger');
+                    setButtonLoading(button, false, loadingText, defaultText);
+                });
+        }
 
         function showFlashMessage(message, type) {
             const alertContainer = document.querySelector('.alert-container') || (() => {

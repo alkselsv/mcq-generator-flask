@@ -3,11 +3,13 @@ import json
 import tempfile
 import uuid
 import time
+import threading
 from pathlib import Path
 from dotenv import load_dotenv
-from flask import Flask, render_template, request, jsonify, send_file, session
+from flask import Flask, render_template, request, jsonify, send_file, session, make_response
 
 from logging_config import setup_logging
+from services.job_store import cleanup_old_jobs, create_job, get_job, update_job
 from services.question_generator import generate_questions
 from services.file_generator import generate_csv, generate_xlsx
 from services.text_simplification import simplify_text
@@ -42,40 +44,114 @@ def cleanup_old_files():
         try:
             if current_time - file_path.stat().st_mtime > MAX_FILE_AGE:
                 file_path.unlink()
-        except (OSError, IOError):
-            pass  # Игнорируем ошибки при удалении
+        except OSError:
+            pass
 
 
-@app.route("/", methods=["GET", "POST"])
-def index():
-    if request.method == "POST":
-        # Очищаем старые файлы при каждом запросе генерации
-        cleanup_old_files()
-        
-        text = request.form["text"].strip()
-        validation_error = validate_text_length(text)
-        if validation_error:
-            return jsonify({"questions": None, "error": validation_error}), 400
+def _schedule_cleanup():
+    threading.Thread(target=cleanup_old_files, daemon=True).start()
 
-        num_questions = int(request.form.get("num_questions", 5))
+
+def _run_generation(job_id, text, num_questions):
+    update_job(job_id, status="running")
+    try:
         questions, error = generate_questions(text, num_questions)
-        
-        if not error and questions:
-            # Сохраняем вопросы во временный файл вместо сессии
-            question_id = str(uuid.uuid4())
-            question_file = QUESTIONS_STORAGE_DIR / f"{question_id}.json"
-            with open(question_file, "w", encoding="utf-8") as f:
-                json.dump(questions, f, ensure_ascii=False)
-            # Храним только ID файла в сессии
-            session["question_id"] = question_id
-        
-        return jsonify({"questions": questions, "error": error})
-    return render_template("index.html")
+        if error:
+            update_job(job_id, status="error", error=error)
+            return
+
+        question_id = str(uuid.uuid4())
+        question_file = QUESTIONS_STORAGE_DIR / f"{question_id}.json"
+        with open(question_file, "w", encoding="utf-8") as f:
+            json.dump(questions, f, ensure_ascii=False)
+
+        update_job(
+            job_id,
+            status="done",
+            questions=questions,
+            question_id=question_id,
+        )
+    except Exception as error:
+        update_job(job_id, status="error", error=str(error))
+
+
+def _run_simplification(job_id, text):
+    update_job(job_id, status="running")
+    simplified_text, error = simplify_text(text)
+    if error:
+        update_job(job_id, status="error", error=error)
+        return
+    update_job(job_id, status="done", simplified_text=simplified_text)
+
+
+def _start_job(target, job_type, *args):
+    job_id = create_job(job_type=job_type)
+    threading.Thread(target=target, args=(job_id, *args), daemon=True).start()
+    return job_id
+
+
+@app.route("/health")
+def health():
+    return jsonify({"status": "ok"})
+
+
+@app.route("/")
+def index():
+    response = make_response(render_template("index.html"))
+    response.headers["Cache-Control"] = "no-store"
+    return response
+
+
+@app.route("/generate", methods=["POST"])
+def generate():
+    cleanup_old_jobs()
+
+    text = request.form.get("text", "").strip()
+    validation_error = validate_text_length(text)
+    if validation_error:
+        return jsonify({"error": validation_error}), 400
+
+    num_questions = int(request.form.get("num_questions", 5))
+    job_id = _start_job(_run_generation, "generate", text, num_questions)
+    _schedule_cleanup()
+    return jsonify({"job_id": job_id})
+
+
+@app.route("/simplify", methods=["POST"])
+def simplify():
+    cleanup_old_jobs()
+
+    text = request.form.get("text", "").strip()
+    validation_error = validate_text_length(text)
+    if validation_error:
+        return jsonify({"error": validation_error}), 400
+
+    job_id = _start_job(_run_simplification, "simplify", text)
+    return jsonify({"job_id": job_id})
+
+
+@app.route("/jobs/<job_id>")
+def job_status(job_id):
+    job = get_job(job_id)
+    if not job:
+        return jsonify({"error": "Задача не найдена"}), 404
+
+    response = {"status": job["status"]}
+    if job["status"] == "done":
+        if job["job_type"] == "simplify":
+            response["simplified_text"] = job["simplified_text"]
+        else:
+            response["questions"] = job["questions"]
+            response["question_id"] = job["question_id"]
+            session["question_id"] = job["question_id"]
+    elif job["status"] == "error":
+        response["error"] = job["error"]
+    return jsonify(response)
 
 
 @app.route("/download")
 def download_file():
-    question_id = session.get("question_id")
+    question_id = request.args.get("question_id") or session.get("question_id")
     if not question_id:
         return "No questions generated yet", 400
 
@@ -126,19 +202,6 @@ def download_file():
         download_name=filename,
         mimetype=mimetype,
     )
-
-
-@app.route("/simplify", methods=["POST"])
-def simplify():
-    text = request.form["text"].strip()
-    validation_error = validate_text_length(text)
-    if validation_error:
-        return jsonify({"error": validation_error}), 400
-
-    simplified_text, error = simplify_text(text)
-    if error:
-        return jsonify({"error": error}), 400
-    return jsonify({"simplified_text": simplified_text})
 
 
 if __name__ == "__main__":
