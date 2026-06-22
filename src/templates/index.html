@@ -149,7 +149,8 @@
             return div.innerHTML;
         }
 
-        // Синхронизация количества вопросов между вкладками
+        document.getElementById('text').addEventListener('input', updateTextLengthCounter);
+        updateTextLengthCounter();
         document.getElementById('numQuestions').addEventListener('input', function () {
             document.getElementById('numQuestionsSimplified').value = this.value;
         });
