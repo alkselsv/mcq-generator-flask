@@ -1,0 +1,11 @@
+# Optional IP whitelist for MCQ Generator.
+# Copy to /etc/nginx/snippets/mcq-ip-whitelist.conf and uncomment
+# the include line in deploy/nginx/mcq-generator.conf.
+#
+#   sudo cp deploy/nginx/ip-whitelist.conf.example /etc/nginx/snippets/mcq-ip-whitelist.conf
+#   sudo nano /etc/nginx/snippets/mcq-ip-whitelist.conf
+#   sudo nginx -t && sudo systemctl reload nginx
+
+allow 77.223.119.205;
+allow 84.200.73.242;
+deny all;

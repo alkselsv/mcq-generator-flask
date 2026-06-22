@@ -130,6 +130,10 @@ ENV/
 env.bak/
 venv.bak/
 
+# Deploy secrets (generated on server, never commit)
+deploy/nginx/.htpasswd
+deploy/nginx/ssl/
+
 # Spyder project settings
 .spyderproject
 .spyproject

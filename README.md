@@ -87,9 +87,19 @@ docker-compose up -d --build
 docker-compose logs -f worker
 ```
 
-После запуска приложение будет доступно по адресу `http://localhost:5000`.
+После запуска приложение будет доступно по адресу `http://localhost:5000` (только с сервера; снаружи — через nginx).
 
-## Память
+## nginx (HTTPS + Basic Auth)
+
+Для production на VPS настройте reverse proxy с самоподписанным SSL и Basic Auth:
+
+```
+docker-compose up -d --build
+sudo ./deploy/scripts/setup-nginx.sh <IP-или-hostname-сервера>
+```
+
+Подробная инструкция: [deploy/README.md](deploy/README.md)
+
 
 Приложение обрабатывает большие тексты через OpenAI API, поэтому потребление памяти зависит от числа воркеров Gunicorn и размера входного текста.
 
