@@ -52,10 +52,39 @@ flask --app src/app run --debug
 docker build -t mcq-generator-flask .
 ```
 
-Запуск контейнера:
+### Один контейнер (без очереди)
 
 ```
 docker run -d -p 5000:5000 --name mcq-generator-flask mcq-generator-flask
+```
+
+### Redis + RQ (рекомендуется)
+
+Ветка `feature/redis-rq` — web, worker и Redis через docker compose:
+
+```
+docker-compose up -d --build
+```
+
+Сервисы:
+
+| Сервис | Назначение |
+|--------|------------|
+| `web` | Gunicorn, API и фронтенд |
+| `worker` | RQ worker, выполняет генерацию и упрощение текста |
+| `redis` | Брокер очереди и хранилище статусов задач |
+
+Переменные окружения:
+
+| Переменная | По умолчанию | Описание |
+|---|---|---|
+| `REDIS_URL` | `redis://localhost:6379/0` | URL Redis |
+| `RQ_JOB_TIMEOUT` | `900` | Таймаут задачи в worker (секунды) |
+
+Логи worker:
+
+```
+docker-compose logs -f worker
 ```
 
 После запуска приложение будет доступно по адресу `http://localhost:5000`.

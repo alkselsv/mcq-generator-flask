@@ -140,7 +140,14 @@
             return null;
         }
 
-        document.getElementById('text').addEventListener('input', updateTextLengthCounter);
+        const POLL_INTERVAL_MS = 2000;
+        const POLL_MAX_MS = 15 * 60 * 1000;
+
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
 
         // Синхронизация количества вопросов между вкладками
         document.getElementById('numQuestions').addEventListener('input', function () {
@@ -212,7 +219,7 @@
                     showFlashMessage(data.error, 'danger');
                     return;
                 }
-                document.getElementById('simplifiedText').innerHTML = `<p>${data.simplified_text}</p>`;
+                document.getElementById('simplifiedText').innerHTML = `<p>${escapeHtml(data.simplified_text)}</p>`;
                 document.getElementById('simplified-tab').click();
                 document.getElementById('generateSimplifiedBtn').disabled = false;
             });
@@ -251,6 +258,10 @@
                 'Сгенерировать вопросы',
                 (data) => {
                     if (data.status === 'done') {
+                        if (!data.questions || !data.questions.length) {
+                            showFlashMessage('Вопросы не получены. Попробуйте снова.', 'danger');
+                            return;
+                        }
                         currentQuestionId = data.question_id;
                         updateQuestionsDisplay(data);
                     } else if (data.error) {
@@ -266,9 +277,10 @@
             fetch(url, {
                 method: 'POST',
                 headers: {
-                    'Content-Type': 'application/x-www-form-urlencoded',
+                    'Content-Type': 'application/json',
                 },
-                body: new URLSearchParams(params)
+                credentials: 'same-origin',
+                body: JSON.stringify(params),
             })
                 .then(response => {
                     if (!response.ok) {
@@ -284,8 +296,14 @@
                 });
         }
 
-        function pollJob(jobId, button, loadingText, defaultText, onComplete) {
-            fetch(`/jobs/${jobId}`)
+        function pollJob(jobId, button, loadingText, defaultText, onComplete, startedAt = Date.now()) {
+            if (Date.now() - startedAt > POLL_MAX_MS) {
+                showFlashMessage('Превышено время ожидания. Попробуйте снова.', 'danger');
+                setButtonLoading(button, false, loadingText, defaultText);
+                return;
+            }
+
+            fetch(`/jobs/${jobId}`, { credentials: 'same-origin' })
                 .then(response => {
                     if (!response.ok) {
                         throw new Error('Задача не найдена');
@@ -294,11 +312,19 @@
                 })
                 .then(data => {
                     if (data.status === 'pending' || data.status === 'running') {
-                        setTimeout(() => pollJob(jobId, button, loadingText, defaultText, onComplete), 2000);
+                        setTimeout(
+                            () => pollJob(jobId, button, loadingText, defaultText, onComplete, startedAt),
+                            POLL_INTERVAL_MS
+                        );
                         return;
                     }
 
-                    onComplete(data);
+                    try {
+                        onComplete(data);
+                    } catch (error) {
+                        console.error('Error:', error);
+                        showFlashMessage('Ошибка отображения результата', 'danger');
+                    }
                     setButtonLoading(button, false, loadingText, defaultText);
                 })
                 .catch(error => {
@@ -378,12 +404,12 @@
                                             value="${index}" id="question${index}" checked>
                                     </div>
                                     <div class="flex-grow-1">
-                                        <h5 class="card-title">${item.question}</h5>
+                                        <h5 class="card-title">${escapeHtml(item.question)}</h5>
                                         <ul class="list-group mb-3">
-                                            ${item.options.map(option => `<li class="list-group-item">${option}</li>`).join('')}
+                                            ${item.options.map(option => `<li class="list-group-item">${escapeHtml(option)}</li>`).join('')}
                                         </ul>
-                                        <p class="card-text"><strong>Правильный ответ:</strong> ${item.answer}</p>
-                                        <p class="card-text"><strong>Тема:</strong> ${item.topic_number} ${item.topic}</p>
+                                        <p class="card-text"><strong>Правильный ответ:</strong> ${escapeHtml(item.answer)}</p>
+                                        <p class="card-text"><strong>Тема:</strong> ${escapeHtml(String(item.topic_number))} ${escapeHtml(item.topic)}</p>
                                     </div>
                                 </div>
                             </div>

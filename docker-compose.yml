@@ -1,0 +1,35 @@
+services:
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    volumes:
+      - redis_data:/data
+
+  web:
+    build: .
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:5000:5000"
+    env_file: .env
+    environment:
+      REDIS_URL: redis://redis:6379/0
+    depends_on:
+      - redis
+    volumes:
+      - questions_data:/tmp/mcq_questions
+
+  worker:
+    build: .
+    restart: unless-stopped
+    command: ["python", "src/run_worker.py", "worker", "--url", "redis://redis:6379/0", "mcq"]
+    env_file: .env
+    environment:
+      REDIS_URL: redis://redis:6379/0
+    depends_on:
+      - redis
+    volumes:
+      - questions_data:/tmp/mcq_questions
+
+volumes:
+  redis_data:
+  questions_data:

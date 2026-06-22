@@ -13,6 +13,7 @@ COPY gunicorn.conf.py ./
 COPY .env ./.env
 
 ENV PYTHONUNBUFFERED=1
+ENV PYTHONPATH=src
 
 EXPOSE 5000
 
