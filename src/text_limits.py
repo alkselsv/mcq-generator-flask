@@ -1,7 +1,10 @@
-MIN_TEXT_LENGTH = 100
-MAX_TEXT_LENGTH = 16000
-MIN_NUM_QUESTIONS = 1
-MAX_NUM_QUESTIONS = 20
+import os
+
+MIN_TEXT_LENGTH = int(os.environ.get("MIN_TEXT_LENGTH", "100"))
+MAX_TEXT_LENGTH = int(os.environ.get("MAX_TEXT_LENGTH", "16000"))
+MIN_NUM_QUESTIONS = int(os.environ.get("MIN_NUM_QUESTIONS", "1"))
+MAX_NUM_QUESTIONS = int(os.environ.get("MAX_NUM_QUESTIONS", "20"))
+DEFAULT_NUM_QUESTIONS = int(os.environ.get("DEFAULT_NUM_QUESTIONS", "5"))
 
 
 def validate_text_length(text):
@@ -16,7 +19,9 @@ def validate_text_length(text):
     return None
 
 
-def parse_num_questions(value, default=5):
+def parse_num_questions(value, default=None):
+    if default is None:
+        default = DEFAULT_NUM_QUESTIONS
     try:
         if value is None or value == "":
             num_questions = default

@@ -1,6 +1,7 @@
 import re
 import json
 import logging
+import os
 from functools import lru_cache
 
 from langchain.output_parsers import StructuredOutputParser, ResponseSchema
@@ -8,11 +9,11 @@ from langchain.prompts import ChatPromptTemplate, HumanMessagePromptTemplate
 
 from services.llm import invoke_chat
 from services.text_chunking import chunk_text
-from text_limits import MAX_NUM_QUESTIONS, MIN_NUM_QUESTIONS
+from text_limits import DEFAULT_NUM_QUESTIONS, MAX_NUM_QUESTIONS, MIN_NUM_QUESTIONS
 
 logger = logging.getLogger("llm.questions")
 
-MAX_TOPUP_ROUNDS = 2
+MAX_TOPUP_ROUNDS = int(os.environ.get("MAX_TOPUP_ROUNDS", "2"))
 
 
 def parse_result(result):
@@ -164,11 +165,13 @@ def _clamp_num_questions(num_questions):
     try:
         value = int(num_questions)
     except (TypeError, ValueError):
-        value = 5
+        value = DEFAULT_NUM_QUESTIONS
     return max(MIN_NUM_QUESTIONS, min(value, MAX_NUM_QUESTIONS))
 
 
-def generate_questions(text, num_questions=5):
+def generate_questions(text, num_questions=None):
+    if num_questions is None:
+        num_questions = DEFAULT_NUM_QUESTIONS
     try:
         num_questions = _clamp_num_questions(num_questions)
         chunks = chunk_text(text)

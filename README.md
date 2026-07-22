@@ -20,7 +20,12 @@
    poetry install
    ```
 
-3. Создайте файл `.env` в корневой директории проекта и добавьте необходимые переменные окружения:
+3. Создайте файл `.env` в корневой директории проекта (можно скопировать `.env.example`) и задайте переменные окружения:
+   ```
+   cp .env.example .env
+   ```
+
+   Обязательные:
    ```
    APP_SECRET_KEY=your_secret_key
    OPENAI_API_KEY=your_openai_api_key
@@ -80,6 +85,8 @@ docker-compose up -d --build
 |---|---|---|
 | `REDIS_URL` | `redis://localhost:6379/0` | URL Redis |
 | `RQ_JOB_TIMEOUT` | `900` | Таймаут задачи в worker (секунды) |
+| `JOB_TTL` | `3600` | TTL записи задачи в Redis (секунды) |
+| `JOB_STALE_TIMEOUT` | `900` | Через сколько считать running-задачу зависшей (секунды) |
 
 Логи worker:
 
@@ -114,7 +121,25 @@ docker run -d -p 5000:5000 -e WEB_CONCURRENCY=2 --name mcq-generator-flask mcq-g
 | Переменная | По умолчанию | Описание |
 |---|---|---|
 | `WEB_CONCURRENCY` | `1` | Число процессов Gunicorn |
+| `GUNICORN_THREADS` | `32` | Число потоков на воркер |
+| `GUNICORN_TIMEOUT` | `300` | Таймаут запроса Gunicorn (секунды) |
+| `GUNICORN_BIND` | `0.0.0.0:5000` | Адрес прослушивания |
+| `OPENAI_MODEL` | `gpt-4o` | Модель OpenAI |
+| `OPENAI_TEMPERATURE` | `0` | Temperature модели |
+| `OPENAI_TIMEOUT` | `300` | Таймаут запроса к OpenAI (секунды) |
+| `OPENAI_MAX_RETRIES` | `2` | Число повторов при ошибке API |
+| `MIN_TEXT_LENGTH` | `100` | Минимальная длина входного текста |
+| `MAX_TEXT_LENGTH` | `16000` | Максимальная длина входного текста |
+| `MIN_NUM_QUESTIONS` | `1` | Минимум вопросов |
+| `MAX_NUM_QUESTIONS` | `20` | Максимум вопросов |
+| `DEFAULT_NUM_QUESTIONS` | `5` | Число вопросов по умолчанию |
 | `TEXT_CHUNK_SIZE` | `4000` | Максимальный размер фрагмента текста для одного запроса к LLM |
+| `TEXT_MIN_CHUNK_SIZE` | `200` | Минимальный размер фрагмента перед слиянием |
+| `MAX_TOPUP_ROUNDS` | `2` | Число раундов добора недостающих вопросов |
+| `MAX_CONTENT_LENGTH` | `262144` | Лимит тела HTTP-запроса (байты) |
+| `QUESTIONS_MAX_FILE_AGE` | `86400` | Срок хранения файлов вопросов (секунды) |
+| `POLL_INTERVAL_MS` | `2000` | Интервал опроса статуса задачи на фронтенде |
+| `POLL_MAX_MS` | `900000` | Максимальное время ожидания задачи на фронтенде |
 
 Рекомендуемый лимит памяти для Docker-контейнера: **512 MB** при `WEB_CONCURRENCY=1`, **1 GB** при `WEB_CONCURRENCY=2`.
 

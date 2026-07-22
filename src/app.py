@@ -1,6 +1,10 @@
 import os
 import threading
+
 from dotenv import load_dotenv
+
+load_dotenv()
+
 from flask import Flask, render_template, request, jsonify, send_file, session, make_response
 
 from logging_config import setup_logging
@@ -14,15 +18,19 @@ from text_limits import (
     MAX_TEXT_LENGTH,
     MIN_NUM_QUESTIONS,
     MAX_NUM_QUESTIONS,
+    DEFAULT_NUM_QUESTIONS,
     parse_num_questions,
     validate_text_length,
 )
 
-load_dotenv()
 setup_logging()
 app = Flask(__name__)
 app.secret_key = os.environ.get("APP_SECRET_KEY")
-app.config["MAX_CONTENT_LENGTH"] = 256 * 1024
+app.config["MAX_CONTENT_LENGTH"] = int(
+    os.environ.get("MAX_CONTENT_LENGTH", str(256 * 1024))
+)
+POLL_INTERVAL_MS = int(os.environ.get("POLL_INTERVAL_MS", "2000"))
+POLL_MAX_MS = int(os.environ.get("POLL_MAX_MS", str(15 * 60 * 1000)))
 
 
 @app.context_processor
@@ -32,6 +40,9 @@ def inject_text_limits():
         "max_text_length": MAX_TEXT_LENGTH,
         "min_num_questions": MIN_NUM_QUESTIONS,
         "max_num_questions": MAX_NUM_QUESTIONS,
+        "default_num_questions": DEFAULT_NUM_QUESTIONS,
+        "poll_interval_ms": POLL_INTERVAL_MS,
+        "poll_max_ms": POLL_MAX_MS,
     }
 
 

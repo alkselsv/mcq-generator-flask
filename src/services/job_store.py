@@ -1,11 +1,12 @@
 import json
+import os
 import time
 import uuid
 
 from services.redis_client import get_redis
 
-JOB_TTL = 3600
-JOB_STALE_TIMEOUT = 900
+JOB_TTL = int(os.environ.get("JOB_TTL", "3600"))
+JOB_STALE_TIMEOUT = int(os.environ.get("JOB_STALE_TIMEOUT", "900"))
 JOB_KEY_PREFIX = "mcq:job:"
 
 

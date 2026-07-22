@@ -81,7 +81,7 @@
                         <label for="numQuestions" class="form-label mb-0">Количество вопросов:</label>
                         <input type="number" class="form-control" id="numQuestions" name="numQuestions"
                             min="{{ min_num_questions }}" max="{{ max_num_questions }}"
-                            value="5" style="width: 80px;">
+                            value="{{ default_num_questions }}" style="width: 80px;">
                         <button type="submit" class="btn btn-primary" id="generateBtn">
                             <span class="spinner-border spinner-border-sm d-none" role="status"
                                 aria-hidden="true"></span>
@@ -95,7 +95,7 @@
                 <div class="mt-3 d-flex align-items-center gap-2">
                     <label for="numQuestionsSimplified" class="form-label mb-0">Количество вопросов:</label>
                     <input type="number" class="form-control" id="numQuestionsSimplified" name="numQuestionsSimplified"
-                        min="{{ min_num_questions }}" max="{{ max_num_questions }}" value="5" style="width: 80px;">
+                        min="{{ min_num_questions }}" max="{{ max_num_questions }}" value="{{ default_num_questions }}" style="width: 80px;">
                     <button type="button" class="btn btn-primary" id="generateSimplifiedBtn">
                         <span class="spinner-border spinner-border-sm d-none" role="status" aria-hidden="true"></span>
                         <span class="btn-text">Сгенерировать вопросы</span>
@@ -162,8 +162,8 @@
             return null;
         }
 
-        const POLL_INTERVAL_MS = 2000;
-        const POLL_MAX_MS = 15 * 60 * 1000;
+        const POLL_INTERVAL_MS = {{ poll_interval_ms }};
+        const POLL_MAX_MS = {{ poll_max_ms }};
 
         function escapeHtml(text) {
             const div = document.createElement('div');

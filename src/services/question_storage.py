@@ -1,12 +1,15 @@
 import json
+import os
 import tempfile
 import time
 from pathlib import Path
 
-QUESTIONS_STORAGE_DIR = Path(tempfile.gettempdir()) / "mcq_questions"
+QUESTIONS_STORAGE_DIR = Path(
+    os.environ.get("QUESTIONS_STORAGE_DIR", Path(tempfile.gettempdir()) / "mcq_questions")
+)
 QUESTIONS_STORAGE_DIR.mkdir(exist_ok=True)
 
-MAX_FILE_AGE = 24 * 60 * 60
+MAX_FILE_AGE = int(os.environ.get("QUESTIONS_MAX_FILE_AGE", str(24 * 60 * 60)))
 
 
 def question_file_path(question_id):

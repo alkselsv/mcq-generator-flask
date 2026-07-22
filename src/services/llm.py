@@ -8,13 +8,14 @@ from services.llm_logging import log_llm_call, log_llm_prompt, log_llm_response
 
 @lru_cache(maxsize=1)
 def get_chat_model():
+    timeout = float(os.environ.get("OPENAI_TIMEOUT", "300"))
     return ChatOpenAI(
-        temperature=0,
-        model_name="gpt-4o",
+        temperature=float(os.environ.get("OPENAI_TEMPERATURE", "0")),
+        model_name=os.environ.get("OPENAI_MODEL", "gpt-4o"),
         api_key=os.environ.get("OPENAI_API_KEY"),
-        timeout=300,
-        max_retries=2,
-        request_timeout=300,
+        timeout=timeout,
+        max_retries=int(os.environ.get("OPENAI_MAX_RETRIES", "2")),
+        request_timeout=timeout,
     )
 
 
