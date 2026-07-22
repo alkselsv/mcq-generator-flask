@@ -79,7 +79,8 @@
                     </div>
                     <div class="mb-3 d-flex align-items-center gap-2">
                         <label for="numQuestions" class="form-label mb-0">Количество вопросов:</label>
-                        <input type="number" class="form-control" id="numQuestions" name="numQuestions" min="1" max="20"
+                        <input type="number" class="form-control" id="numQuestions" name="numQuestions"
+                            min="{{ min_num_questions }}" max="{{ max_num_questions }}"
                             value="5" style="width: 80px;">
                         <button type="submit" class="btn btn-primary" id="generateBtn">
                             <span class="spinner-border spinner-border-sm d-none" role="status"
@@ -94,7 +95,7 @@
                 <div class="mt-3 d-flex align-items-center gap-2">
                     <label for="numQuestionsSimplified" class="form-label mb-0">Количество вопросов:</label>
                     <input type="number" class="form-control" id="numQuestionsSimplified" name="numQuestionsSimplified"
-                        min="1" max="20" value="5" style="width: 80px;">
+                        min="{{ min_num_questions }}" max="{{ max_num_questions }}" value="5" style="width: 80px;">
                     <button type="button" class="btn btn-primary" id="generateSimplifiedBtn">
                         <span class="spinner-border spinner-border-sm d-none" role="status" aria-hidden="true"></span>
                         <span class="btn-text">Сгенерировать вопросы</span>
@@ -115,9 +116,30 @@
         let currentQuestionId = null;
         const MIN_TEXT_LENGTH = {{ min_text_length }};
         const MAX_TEXT_LENGTH = {{ max_text_length }};
+        const MIN_NUM_QUESTIONS = {{ min_num_questions }};
+        const MAX_NUM_QUESTIONS = {{ max_num_questions }};
 
         function getTrimmedTextLength(value) {
             return value.trim().length;
+        }
+
+        function clampNumQuestions(value) {
+            const parsed = parseInt(value, 10);
+            if (Number.isNaN(parsed) || parsed < MIN_NUM_QUESTIONS) {
+                return MIN_NUM_QUESTIONS;
+            }
+            if (parsed > MAX_NUM_QUESTIONS) {
+                return MAX_NUM_QUESTIONS;
+            }
+            return parsed;
+        }
+
+        function syncNumQuestions(sourceId, targetId) {
+            const source = document.getElementById(sourceId);
+            const clamped = clampNumQuestions(source.value);
+            source.value = clamped;
+            document.getElementById(targetId).value = clamped;
+            return clamped;
         }
 
         function updateTextLengthCounter() {
@@ -152,11 +174,19 @@
         document.getElementById('text').addEventListener('input', updateTextLengthCounter);
         updateTextLengthCounter();
         document.getElementById('numQuestions').addEventListener('input', function () {
-            document.getElementById('numQuestionsSimplified').value = this.value;
+            syncNumQuestions('numQuestions', 'numQuestionsSimplified');
         });
-        
+
         document.getElementById('numQuestions').addEventListener('change', function () {
-            document.getElementById('numQuestionsSimplified').value = this.value;
+            syncNumQuestions('numQuestions', 'numQuestionsSimplified');
+        });
+
+        document.getElementById('numQuestionsSimplified').addEventListener('input', function () {
+            syncNumQuestions('numQuestionsSimplified', 'numQuestions');
+        });
+
+        document.getElementById('numQuestionsSimplified').addEventListener('change', function () {
+            syncNumQuestions('numQuestionsSimplified', 'numQuestions');
         });
 
         document.getElementById('generateBtn').addEventListener('click', function (e) {
@@ -175,7 +205,8 @@
             }
 
             textArea.classList.remove('is-invalid');
-            startGeneration(text, document.getElementById('numQuestions').value, document.getElementById('generateBtn'));
+            const numQuestions = syncNumQuestions('numQuestions', 'numQuestionsSimplified');
+            startGeneration(text, numQuestions, document.getElementById('generateBtn'));
         });
 
         document.getElementById('downloadCsvBtn').addEventListener('click', function () {
@@ -239,7 +270,8 @@
             }
 
             const generateBtn = document.getElementById('generateSimplifiedBtn');
-            startGeneration(text, document.getElementById('numQuestionsSimplified').value, generateBtn);
+            const numQuestions = syncNumQuestions('numQuestionsSimplified', 'numQuestions');
+            startGeneration(text, numQuestions, generateBtn);
         });
 
         function setButtonLoading(button, loading, loadingText, defaultText) {
@@ -405,7 +437,7 @@
                                             value="${index}" id="question${index}" checked>
                                     </div>
                                     <div class="flex-grow-1">
-                                        <h5 class="card-title">${escapeHtml(item.question)}</h5>
+                                        <h5 class="card-title">${index + 1}. ${escapeHtml(item.question)}</h5>
                                         <ul class="list-group mb-3">
                                             ${item.options.map(option => `<li class="list-group-item">${escapeHtml(option)}</li>`).join('')}
                                         </ul>

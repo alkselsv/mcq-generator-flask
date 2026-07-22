@@ -9,7 +9,14 @@ from services.job_queue import enqueue_generation, enqueue_simplification
 from services.file_generator import generate_csv, generate_xlsx
 from services.question_storage import cleanup_old_files, load_questions
 from services.redis_client import get_redis
-from text_limits import MIN_TEXT_LENGTH, MAX_TEXT_LENGTH, validate_text_length
+from text_limits import (
+    MIN_TEXT_LENGTH,
+    MAX_TEXT_LENGTH,
+    MIN_NUM_QUESTIONS,
+    MAX_NUM_QUESTIONS,
+    parse_num_questions,
+    validate_text_length,
+)
 
 load_dotenv()
 setup_logging()
@@ -23,6 +30,8 @@ def inject_text_limits():
     return {
         "min_text_length": MIN_TEXT_LENGTH,
         "max_text_length": MAX_TEXT_LENGTH,
+        "min_num_questions": MIN_NUM_QUESTIONS,
+        "max_num_questions": MAX_NUM_QUESTIONS,
     }
 
 
@@ -38,10 +47,6 @@ def _get_request_data():
 
 def _parse_text(data):
     return (data.get("text") or "").strip()
-
-
-def _parse_num_questions(data, default=5):
-    return int(data.get("num_questions", default))
 
 
 def _start_job(enqueue_fn, job_type, *args):
@@ -74,7 +79,10 @@ def generate():
     if validation_error:
         return jsonify({"error": validation_error}), 400
 
-    num_questions = _parse_num_questions(data)
+    num_questions, num_error = parse_num_questions(data.get("num_questions"))
+    if num_error:
+        return jsonify({"error": num_error}), 400
+
     job_id = _start_job(enqueue_generation, "generate", text, num_questions)
     _schedule_cleanup()
     return jsonify({"job_id": job_id})
