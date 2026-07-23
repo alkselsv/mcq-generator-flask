@@ -15,6 +15,93 @@ logger = logging.getLogger("llm.questions")
 
 MAX_TOPUP_ROUNDS = int(os.environ.get("MAX_TOPUP_ROUNDS", "2"))
 
+# Названия нормативных документов — первую букву оставляем заглавной.
+_NORMATIVE_DOC_PREFIXES = (
+    "федеральный конституционный закон",
+    "федеральный закон",
+    "технический регламент",
+    "методические указания",
+    "методические рекомендации",
+    "постановление",
+    "распоряжение",
+    "положение",
+    "регламент",
+    "инструкция",
+    "конституция",
+    "конвенция",
+    "соглашение",
+    "стандарт",
+    "правила",
+    "приказ",
+    "закон",
+    "кодекс",
+    "устав",
+    "указ",
+    "декрет",
+    "нормы",
+    "письмо",
+    "договор",
+    "гост",
+    "снип",
+    "санпин",
+)
+
+# Аббревиатуры с особым регистром (не просто заглавная первая буква).
+_NORMATIVE_ABBREVIATIONS = {
+    "гост": "ГОСТ",
+    "снип": "СНиП",
+    "санпин": "СанПиН",
+}
+
+
+def _is_normative_document_name(text):
+    normalized = " ".join((text or "").lower().split())
+    return any(
+        normalized == prefix or normalized.startswith(prefix + " ")
+        for prefix in _NORMATIVE_DOC_PREFIXES
+    )
+
+
+def _normalize_option_casing(text):
+    """Фолбэк: поправить регистр, если модель не соблюла правило из промпта."""
+    if not text or not isinstance(text, str):
+        return text
+
+    stripped = text.strip()
+    if not stripped:
+        return text
+
+    if not _is_normative_document_name(stripped):
+        if stripped[0].islower():
+            return stripped
+        return stripped[0].lower() + stripped[1:]
+
+    first_word, *rest_parts = stripped.split(None, 1)
+    abbreviation = _NORMATIVE_ABBREVIATIONS.get(first_word.lower())
+    if abbreviation:
+        return abbreviation if not rest_parts else f"{abbreviation} {rest_parts[0]}"
+
+    if stripped[0].isupper():
+        return stripped
+    return stripped[0].upper() + stripped[1:]
+
+
+def _normalize_question_options(question):
+    """Применить фолбэк-нормализацию регистра к вариантам и ответу."""
+    options = [_normalize_option_casing(option) for option in question["options"]]
+    answer = _normalize_option_casing(question["answer"])
+
+    # Сохраняем совпадение правильного ответа с одним из вариантов после нормализации.
+    answer_key = _normalize_question_text(answer)
+    for option in options:
+        if _normalize_question_text(option) == answer_key:
+            answer = option
+            break
+
+    question["options"] = options
+    question["answer"] = answer
+    return question
+
 
 def parse_result(result):
     json_objects = re.findall(r"\{[^}]+\}", result)
@@ -23,19 +110,18 @@ def parse_result(result):
     for json_str in json_objects:
         try:
             question_data = json.loads(json_str)
-            questions.append(
-                {
-                    "question": question_data["question"],
-                    "options": [
-                        question_data["option_1"],
-                        question_data["option_2"],
-                        question_data["option_3"],
-                    ],
-                    "answer": question_data["answer"],
-                    "topic_number": question_data["topic_number"],
-                    "topic": question_data["topic"],
-                }
-            )
+            question = {
+                "question": question_data["question"],
+                "options": [
+                    question_data["option_1"],
+                    question_data["option_2"],
+                    question_data["option_3"],
+                ],
+                "answer": question_data["answer"],
+                "topic_number": question_data["topic_number"],
+                "topic": question_data["topic"],
+            }
+            questions.append(_normalize_question_options(question))
         except json.JSONDecodeError:
             logger.warning("Ошибка при разборе JSON: %s", json_str)
         except KeyError as error:
@@ -71,19 +157,21 @@ def _get_prompt(num_questions, with_exclusions=False):
         ),
         ResponseSchema(
             name="option_1",
-            description="Первый вариант ответа на вопрос с множественным выбором. Используйте этот формат: 'вариант ответа'",
+            description="Первый вариант ответа (см. правило регистра в инструкции).",
         ),
         ResponseSchema(
             name="option_2",
-            description="Второй вариант ответа на вопрос с множественным выбором. Используйте этот формат: 'вариант ответа''",
+            description="Второй вариант ответа (см. правило регистра в инструкции).",
         ),
         ResponseSchema(
             name="option_3",
-            description="Третий вариант ответа на вопрос с множественным выбором. Используйте этот формат: 'вариант ответа''",
+            description="Третий вариант ответа (см. правило регистра в инструкции).",
         ),
         ResponseSchema(
             name="answer",
-            description="Правильный ответ на вопрос. Используйте этот формат: 'вариант ответа' ",
+            description=(
+                "Правильный ответ — должен дословно совпадать с одним из вариантов."
+            ),
         ),
         ResponseSchema(
             name="topic_number", description="Номер пункта исходного документа."
@@ -108,6 +196,10 @@ def _get_prompt(num_questions, with_exclusions=False):
         messages=[
             HumanMessagePromptTemplate.from_template(
                 """Получив текст нормативного документа, сгенерируй из него {number_of_questions} вопросов с несколькими вариантами ответов с правильным ответом.
+
+Правило регистра вариантов ответа (option_1, option_2, option_3 и answer):
+- пиши вариант со строчной буквы, например: «ознакомление с требованиями»;
+- исключение: если вариант — название нормативного документа, начинай с заглавной буквы, например: «Закон…», «Положение…», «Приказ…», «Федеральный закон…», «ГОСТ…».
                 """
                 + exclusion_block
                 + """\n{format_instructions}\n{user_prompt}"""
