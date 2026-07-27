@@ -8,8 +8,8 @@ load_dotenv()
 from flask import Flask, render_template, request, jsonify, send_file, session, make_response
 
 from logging_config import setup_logging
-from services.job_store import create_job, get_job
-from services.job_queue import enqueue_generation, enqueue_simplification
+from services.job_store import cancel_job, create_job, get_job
+from services.job_queue import cancel_rq_job, enqueue_generation, enqueue_simplification
 from services.file_generator import generate_csv, generate_xlsx
 from services.question_storage import cleanup_old_files, load_questions
 from services.redis_client import get_redis
@@ -111,6 +111,19 @@ def simplify():
     return jsonify({"job_id": job_id})
 
 
+def _job_questions_payload(job):
+    question_id = job.get("question_id")
+    if not question_id:
+        return None
+    questions = load_questions(question_id)
+    if not questions:
+        return None
+    return {
+        "questions": questions,
+        "question_id": question_id,
+    }
+
+
 @app.route("/jobs/<job_id>")
 def job_status(job_id):
     job = get_job(job_id)
@@ -118,18 +131,63 @@ def job_status(job_id):
         return jsonify({"error": "Задача не найдена"}), 404
 
     response = {"status": job["status"]}
+    if job["status"] in ("pending", "running") and job.get("job_type") == "generate":
+        if job.get("progress_total") is not None:
+            response["progress_current"] = job.get("progress_current") or 0
+            response["progress_total"] = job["progress_total"]
     if job["status"] == "done":
         if job["job_type"] == "simplify":
             response["simplified_text"] = job["simplified_text"]
         else:
-            questions = load_questions(job["question_id"])
-            if questions is None:
+            payload = _job_questions_payload(job)
+            if payload is None:
                 return jsonify({"error": "Результат не найден"}), 404
-            response["questions"] = questions
-            response["question_id"] = job["question_id"]
-            session["question_id"] = job["question_id"]
+            response.update(payload)
+            session["question_id"] = payload["question_id"]
+    elif job["status"] == "cancelled" and job.get("job_type") == "generate":
+        payload = _job_questions_payload(job)
+        if payload is not None:
+            response.update(payload)
+            session["question_id"] = payload["question_id"]
+        if job.get("progress_total") is not None:
+            response["progress_current"] = job.get("progress_current") or 0
+            response["progress_total"] = job["progress_total"]
     elif job["status"] == "error":
         response["error"] = job["error"]
+    return jsonify(response)
+
+
+@app.route("/jobs/<job_id>/cancel", methods=["POST"])
+def job_cancel(job_id):
+    job = get_job(job_id)
+    if not job:
+        return jsonify({"error": "Задача не найдена"}), 404
+
+    if job["status"] in ("done", "error", "cancelled"):
+        response = {"status": job["status"]}
+        if job["status"] in ("done", "cancelled") and job.get("job_type") == "generate":
+            payload = _job_questions_payload(job)
+            if payload is not None:
+                response.update(payload)
+                session["question_id"] = payload["question_id"]
+        return jsonify(response)
+
+    cancelled = cancel_job(job_id)
+    if not cancelled:
+        return jsonify({"error": "Задача не найдена"}), 404
+
+    cancel_rq_job(cancelled.get("rq_job_id"))
+    # Reload: worker may already have saved partial questions.
+    job = get_job(job_id) or cancelled
+    response = {"status": "cancelled"}
+    if job.get("job_type") == "generate":
+        payload = _job_questions_payload(job)
+        if payload is not None:
+            response.update(payload)
+            session["question_id"] = payload["question_id"]
+        if job.get("progress_total") is not None:
+            response["progress_current"] = job.get("progress_current") or 0
+            response["progress_total"] = job["progress_total"]
     return jsonify(response)
 
 

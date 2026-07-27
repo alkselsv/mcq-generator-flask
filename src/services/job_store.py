@@ -8,6 +8,15 @@ from services.redis_client import get_redis
 JOB_TTL = int(os.environ.get("JOB_TTL", "3600"))
 JOB_STALE_TIMEOUT = int(os.environ.get("JOB_STALE_TIMEOUT", "900"))
 JOB_KEY_PREFIX = "mcq:job:"
+TERMINAL_STATUSES = frozenset({"done", "error", "cancelled"})
+
+
+class JobCancelled(Exception):
+    """Raised when a running job is cancelled by the user."""
+
+    def __init__(self, partial_questions=None):
+        super().__init__("Job cancelled")
+        self.partial_questions = partial_questions or []
 
 
 def _job_key(job_id):
@@ -37,6 +46,9 @@ def create_job(job_type="generate"):
         "error": None,
         "question_id": None,
         "simplified_text": None,
+        "rq_job_id": None,
+        "progress_current": 0,
+        "progress_total": None,
     }
     _save_job(job_id, job)
     return job_id
@@ -57,16 +69,58 @@ def get_job(job_id):
     return job
 
 
+def is_cancelled(job_id):
+    job = _load_job(job_id)
+    return bool(job and job.get("status") == "cancelled")
+
+
 def update_job(job_id, **fields):
     job = _load_job(job_id)
     if not job:
-        return
+        return None
+
+    # Do not overwrite a terminal status (e.g. cancelled → done).
+    if job["status"] in TERMINAL_STATUSES:
+        new_status = fields.get("status")
+        if new_status is not None and new_status != job["status"]:
+            return job
+        # After cancel allow attaching partial generation results / RQ id.
+        if job["status"] == "cancelled":
+            allowed = {
+                "rq_job_id",
+                "question_id",
+                "progress_current",
+                "progress_total",
+            }
+            if set(fields.keys()).issubset(allowed):
+                job.update(fields)
+                _save_job(job_id, job)
+                return job
+            return job
+        # After done/error only allow linking RQ id (race with enqueue).
+        if set(fields.keys()) != {"rq_job_id"}:
+            return job
 
     if fields.get("status") == "running" and job.get("status") != "running":
         fields["started_at"] = time.time()
 
     job.update(fields)
     _save_job(job_id, job)
+    return job
+
+
+def cancel_job(job_id):
+    job = _load_job(job_id)
+    if not job:
+        return None
+
+    if job["status"] in TERMINAL_STATUSES:
+        return job
+
+    job["status"] = "cancelled"
+    job["error"] = None
+    _save_job(job_id, job)
+    return job
 
 
 def cleanup_old_jobs():
